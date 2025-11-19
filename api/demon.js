@@ -51,18 +51,28 @@ module.exports = async (req, res) => {
     try {
       const data = JSON.parse(raw);
 
-      // ❌ Remove @oxmzoo (value or key)
+      // ❌ Remove "@oxmzoo" completely
       if (data["@oxmzoo"]) delete data["@oxmzoo"];
-
       for (const k in data) {
         if (typeof data[k] === "string" && data[k].includes("@oxmzoo")) {
           delete data[k];
         }
       }
 
-      // Add your own signature
-      data.developer = "splexxo";
-      data.powered_by = "splexxo Demon Proxy";
+      // ❌ Remove any Demon Proxy / Proxy / prefix / unwanted text
+      for (const k in data) {
+        if (typeof data[k] === "string") {
+          data[k] = data[k]
+            .replace(/demon proxy/gi, "")
+            .replace(/proxy/gi, "")
+            .replace(/demon/gi, "")
+            .trim();
+        }
+      }
+
+      // ✔ Add your clean branding
+      data.developer = "splexxo";       // Sirf NAME
+      data.powered_by = "splexxo API"; // Clean, no proxy, no demon
 
       responseBody = JSON.stringify(data);
     } catch {
