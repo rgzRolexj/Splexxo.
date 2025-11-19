@@ -1,35 +1,29 @@
 // ==================== CONFIG =====================
-const YOUR_API_KEYS = ["SPLEXXO"]; // tumhari private keys
-const TARGET_API = "https://demon.taitanx.workers.dev"; // original API
-const CACHE_TIME = 3600 * 1000; // 1 hour (ms)
+const YOUR_API_KEYS = ["SPLEXXO"];
+const TARGET_API = "https://demon.taitanx.workers.dev";
+const CACHE_TIME = 3600 * 1000;
 // ==================================================
 
 const cache = new Map();
 
 module.exports = async (req, res) => {
-  // Sirf GET allow
   if (req.method !== "GET") {
     return res.status(405).json({ error: "method not allowed" });
   }
 
-  // Query params
   const { mobile: rawMobile, key: rawKey } = req.query || {};
 
-  // Param check
   if (!rawMobile || !rawKey) {
     return res.status(400).json({ error: "missing parameters" });
   }
 
-  // Sanitise
-  const mobile = String(rawMobile).replace(/\D/g, ""); // sirf digits
+  const mobile = String(rawMobile).replace(/\D/g, "");
   const key = String(rawKey).trim();
 
-  // Key validate
   if (!YOUR_API_KEYS.includes(key)) {
     return res.status(403).json({ error: "invalid key" });
   }
 
-  // Cache check
   const now = Date.now();
   const cached = cache.get(mobile);
 
@@ -39,7 +33,6 @@ module.exports = async (req, res) => {
     return res.status(200).send(cached.response);
   }
 
-  // Upstream URL
   const url = `${TARGET_API}?mobile=${encodeURIComponent(mobile)}`;
 
   try {
@@ -55,18 +48,27 @@ module.exports = async (req, res) => {
 
     let responseBody;
 
-    // JSON try–catch
     try {
       const data = JSON.parse(raw);
+
+      // ❌ Remove @oxmzoo (value or key)
+      if (data["@oxmzoo"]) delete data["@oxmzoo"];
+
+      for (const k in data) {
+        if (typeof data[k] === "string" && data[k].includes("@oxmzoo")) {
+          delete data[k];
+        }
+      }
+
+      // Add your own signature
       data.developer = "splexxo";
-      data.powered_by = "splexxo Demon API";
+      data.powered_by = "splexxo Demon Proxy";
+
       responseBody = JSON.stringify(data);
     } catch {
-      // Agar JSON nahi hai to raw hi bhej do
       responseBody = raw;
     }
 
-    // Cache save
     cache.set(mobile, {
       timestamp: Date.now(),
       response: responseBody,
@@ -75,6 +77,7 @@ module.exports = async (req, res) => {
     res.setHeader("X-Proxy-Cache", "MISS");
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     return res.status(200).send(responseBody);
+
   } catch (err) {
     return res.status(502).json({
       error: "upstream API error",
