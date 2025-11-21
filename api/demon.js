@@ -1,29 +1,58 @@
 // ==================== CONFIG =====================
-const YOUR_API_KEYS = ["SPLEXXO"];
-const TARGET_API = "https://demon.taitanx.workers.dev";
-const CACHE_TIME = 3600 * 1000;
-// ==================================================
+const YOUR_API_KEYS = ["SPLEXXO"]; // tumhara private key
+const TARGET_API = "http://king.thesmmpanel.shop/number-info"; // NEW API
+const CACHE_TIME = 3600 * 1000; // 1 hour (ms)
+// =================================================
 
 const cache = new Map();
 
+// Helper: recursively clean @oxmzoo from JSON
+function cleanOxmzoo(value) {
+  if (typeof value === "string") {
+    return value.replace(/@oxmzoo/gi, "").trim();
+  }
+  if (Array.isArray(value)) {
+    return value.map(cleanOxmzoo);
+  }
+  if (value && typeof value === "object") {
+    const cleaned = {};
+    for (const key of Object.keys(value)) {
+      if (key === "@oxmzoo") continue; // key hi remove
+      cleaned[key] = cleanOxmzoo(value[key]);
+    }
+    return cleaned;
+  }
+  return value;
+}
+
 module.exports = async (req, res) => {
+  // Sirf GET allow
   if (req.method !== "GET") {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
     return res.status(405).json({ error: "method not allowed" });
   }
 
   const { mobile: rawMobile, key: rawKey } = req.query || {};
 
+  // Param check
   if (!rawMobile || !rawKey) {
-    return res.status(400).json({ error: "missing parameters" });
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    return res
+      .status(400)
+      .json({ error: "missing parameters: mobile or key" });
   }
 
+  // Sirf digits rakho
   const mobile = String(rawMobile).replace(/\D/g, "");
   const key = String(rawKey).trim();
 
+  // API key check
   if (!YOUR_API_KEYS.includes(key)) {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
     return res.status(403).json({ error: "invalid key" });
   }
 
+  // Cache check
   const now = Date.now();
   const cached = cache.get(mobile);
 
@@ -33,65 +62,56 @@ module.exports = async (req, res) => {
     return res.status(200).send(cached.response);
   }
 
+  // Upstream URL build - NEW API FORMAT
   const url = `${TARGET_API}?mobile=${encodeURIComponent(mobile)}`;
 
   try {
     const upstream = await fetch(url);
     const raw = await upstream.text();
 
-    if (!upstream.ok || !raw) {
-      return res.status(502).json({
-        error: "upstream API failed",
-        details: `HTTP ${upstream.status}`,
-      });
-    }
+    if (!upstream.ok || !raw) {  
+      res.setHeader("Content-Type", "application/json; charset=utf-8");  
+      return res.status(502).json({  
+        error: "upstream API failed",  
+        details: `HTTP ${upstream.status}`,  
+      });  
+    }  
 
-    let responseBody;
+    let responseBody;  
 
-    try {
-      const data = JSON.parse(raw);
+    try {  
+      // JSON parse try  
+      let data = JSON.parse(raw);  
 
-      // ❌ Remove "@oxmzoo" completely
-      if (data["@oxmzoo"]) delete data["@oxmzoo"];
-      for (const k in data) {
-        if (typeof data[k] === "string" && data[k].includes("@oxmzoo")) {
-          delete data[k];
-        }
-      }
+      // Saare data se @oxmzoo clean karo  
+      data = cleanOxmzoo(data);  
 
-      // ❌ Remove any Demon Proxy / Proxy / prefix / unwanted text
-      for (const k in data) {
-        if (typeof data[k] === "string") {
-          data[k] = data[k]
-            .replace(/demon proxy/gi, "")
-            .replace(/proxy/gi, "")
-            .replace(/demon/gi, "")
-            .trim();
-        }
-      }
+      // Apni clean branding  
+      data.developer = "splexxo";  
+      data.powered_by = "splexxo Info API";  
 
-      // ✔ Add your clean branding
-      data.developer = "splexxo";       // Sirf NAME
-      data.powered_by = "splexxo API"; // Clean, no proxy, no demon
+      responseBody = JSON.stringify(data);  
+    } catch {  
+      // Agar JSON nahi hai to raw text me se bhi @oxmzoo hata do  
+      const cleanedText = raw.replace(/@oxmzoo/gi, "").trim();  
+      responseBody = cleanedText;  
+    }  
 
-      responseBody = JSON.stringify(data);
-    } catch {
-      responseBody = raw;
-    }
+    // Cache save  
+    cache.set(mobile, {  
+      timestamp: Date.now(),  
+      response: responseBody,  
+    });  
 
-    cache.set(mobile, {
-      timestamp: Date.now(),
-      response: responseBody,
-    });
-
-    res.setHeader("X-Proxy-Cache", "MISS");
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("X-Proxy-Cache", "MISS");  
+    res.setHeader("Content-Type", "application/json; charset=utf-8");  
     return res.status(200).send(responseBody);
 
   } catch (err) {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
     return res.status(502).json({
-      error: "upstream API error",
-      details: err.message,
+      error: "upstream request error",
+      details: err.message || "unknown error",
     });
   }
 };
